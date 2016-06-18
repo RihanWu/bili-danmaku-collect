@@ -35,7 +35,7 @@ widths = [
     (12351,  1), (12438,  2), (12442,   0), (19893, 2), (19967, 1),
     (55203,  2), (63743,  1), (64106,   2), (65039, 1), (65059, 0),
     (65131,  2), (65279,  1), (65376,   2), (65500, 1), (65510, 2),
-    (120831, 1), (262141, 2), (1114109, 1),
+    (120831, 1), (262141, 2), (1114109, 1)
 ]
 
 def str_width(string):
@@ -50,6 +50,7 @@ def str_width(string):
             for num, wid in widths:
                 if temp  <= num:
                     count += wid
+                    break
     return count
 
 ##################################################################
@@ -66,8 +67,11 @@ TOTAL_COUNT_TIME = 15
 HEARTBEAT_CONTENT = b'00000010001000010000000200000001'
 total = (0, 0)
 send_data_template = [b'',
-                      b'001000010000000700000001',
-                      b'']
+                     (16).to_bytes(2, byteorder="big"),
+                     (1).to_bytes(2, byteorder="big"),
+                     (7).to_bytes(4, byteorder="big"),
+                     (1).to_bytes(4, byteorder="big"),
+                     b'']
 
 
 def pack_data(body):
@@ -76,7 +80,7 @@ def pack_data(body):
     roomid(int)
     """
     send_data_template[0] = (len(body)+16).to_bytes(4, byteorder="big")
-    send_data_template[2] = body
+    send_data_template[5] = body
     return b''.join(send_data_template)
 
 
@@ -85,18 +89,16 @@ def recv(sock, roomid):
 
     # Package length
     re_data = sock.recv(16)
-    print(re_data)
-    if not re_data:
-        print("No incoming data")
+    if re_data:
+        length = int(hh(re_data[:4]), 16)
+    else:
         return (0, "")
-    length = int(hh(re_data[:4]), 16)
     if NORMAL:
         print("length", length)
 
     # Valid
     if length > 16:
         typeid = int(hh(re_data[8:12]), 16)
-
         re_data = sock.recv(length-16)
         if typeid < 4:  # Audience count
             if NORMAL:
@@ -111,7 +113,7 @@ def recv(sock, roomid):
                 elif command["cmd"] == "SEND_GIFT":
                     pre = ""
                     if command["data"].get("num"):
-                        pre =  "".join([command["data"]["num"], "X"])
+                        pre =  "".join([str(command["data"]["num"]), "X"])
                     msg = "".join([pre,
                                    command["data"]["giftName"],
                                    " from ",
@@ -133,7 +135,6 @@ def start(roomid, loop, roomname, start_count_time=0):
     sock.connect(("livecmt-2.bilibili.com", 788))
 
     sock.sendall(pack_data(j))
-    recv(sock, roomid)
     print("Connected to room", roomid)
 
     # Global counting start time
@@ -147,12 +148,9 @@ def start(roomid, loop, roomname, start_count_time=0):
         while loop:
             # Heartbeat
             if time.time() - heartbeat_timer > 10:
-                print("Sending heartbeat")
                 sock.sendall(HEARTBEAT_CONTENT)
                 heartbeat_timer = time.time()
-            print("Looping")
             size_incre, msg = recv(sock, roomid)
-            print("Received:", size_incre)
             gevent.sleep(1)
             
             # Counting process
@@ -168,7 +166,7 @@ def start(roomid, loop, roomname, start_count_time=0):
                 break
     except Exception as e:
         sock.close()
-        print(repr(e))
+        print(roomid, repr(e))
         raise Exception("Error: Closing socket")
 
     sock.close()
@@ -180,13 +178,13 @@ def start(roomid, loop, roomname, start_count_time=0):
 
 def start_with_redo(roomid, loop, roomname, start_count_time):
     while time.time() - start_count_time < TOTAL_COUNT_TIME:
-        start(roomid, loop, roomname, start_count_time)
-#        try:
-#            start(roomid, loop, roomname, start_count_time)
-#        except:
-#            print("Reconnecting to ", roomid)
-##            gevent.sleep(5)
-#            continue
+#        start(roomid, loop, roomname, start_count_time)
+        try:
+            start(roomid, loop, roomname, start_count_time)
+        except:
+            print("Reconnecting to ", roomid)
+#            gevent.sleep(5)
+            continue
         
 if __name__ == "__main__":
     start_with_redo(33616, 1, "No-Name", time.time())

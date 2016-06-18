@@ -15,7 +15,7 @@ import json
 import time
 
 
-cate = "all"
+cate = "ent-life"
 
 def fetch_roomid(cate, page, room_list):
     headers = {"Accept": "application/json, text/javascript, */*; q=0.01",
@@ -48,7 +48,8 @@ def update_room_list(cate):
         count_cate = cate
     print("Start fetching room list")
     room_list = []
-    fetch_pool = gevent.pool.Pool()
+    BATCH_NUM = 10
+    fetch_pool = gevent.pool.Pool(BATCH_NUM)
     # Get total count and go concurrent
     try:
         for i in range(5):
@@ -63,11 +64,8 @@ def update_room_list(cate):
                 print("Get count", count)
                 print("Using normal method")
                 pages_needed = int(count/32) + 1
-                BATCH_NUM = 10
-                for i in range(int(pages_needed/BATCH_NUM) + 1):
-                    for j in range(i*BATCH_NUM, (i+1)*BATCH_NUM):
-                        fetch_pool.spawn(fetch_roomid, cate, j + 1, room_list)
-                    fetch_pool.join()
+                fetch_pool.map(lambda a:fetch_roomid(*a),
+                               [(cate, j+1, room_list) for j in range(pages_needed)])
                 return list(set(room_list))
             except:
                 print("Retrying fetch room count")
@@ -81,7 +79,6 @@ def update_room_list(cate):
                 trial = 0
                 while True:
                     len_before = len(room_list)
-                    BATCH_NUM = 10
                     for i in range(trial*BATCH_NUM, (trial+1)*BATCH_NUM):
                         print("Trying ten pages")
                         fetch_pool.spawn(fetch_roomid, cate, i + 1, room_list)
@@ -89,7 +86,7 @@ def update_room_list(cate):
                     if len(room_list)-len_before < 320:
                         break
                     trial += 1
-                    return list(set(room_list))
+                return list(set(room_list))
             except:
                 print("Retrying fetch room count")
                 continue
@@ -110,7 +107,7 @@ try:
         for j in test_list[BATCH_NUM*i: BATCH_NUM*(i+1)]:
             pool.spawn(start_with_redo, j[0], 1, j[1], start_count_time)
             print("Spawning ", j[0])
-        gevent.sleep(BATCH_NUM * 2)
+        gevent.sleep(BATCH_NUM * 1)
     print("All started")
     pool.join()
     pool.kill()
