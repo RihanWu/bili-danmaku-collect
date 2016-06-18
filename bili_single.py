@@ -61,6 +61,8 @@ COUNTING_TOTAL  :   If True, count total command number
 TOTAL_COUNT_TIME:   Number of seconds to run
 total           :   (number of commands, total size of commands)
 """
+# 1 to also print connect and reconnect
+PRINT_LV = 0
 NORMAL = False
 COUNTING_TOTAL = True
 HEARTBEAT_CONTENT = b'00000010001000010000000200000001'
@@ -134,7 +136,7 @@ def start(roomid, loop, roomname, total_count_time, start_count_time=0):
     sock.connect(("livecmt-2.bilibili.com", 788))
 
     sock.sendall(pack_data(j))
-    print("Connected to room", roomid)
+    if PRINT_LV:print("Connected to room", roomid)
 
     # Global counting start time
     if start_count_time:
@@ -150,7 +152,7 @@ def start(roomid, loop, roomname, total_count_time, start_count_time=0):
                 sock.sendall(HEARTBEAT_CONTENT)
                 heartbeat_timer = time.time()
             size_incre, msg = recv(sock, roomid)
-            gevent.sleep(0.5)
+            gevent.sleep(1)
             
             # Counting process
             if size_incre:
@@ -192,13 +194,13 @@ def start_with_redo(roomid, loop, roomname, total_count_time, start_count_time):
             start(roomid, loop, roomname, total_count_time, start_count_time)
         except KeyboardInterrupt as e:
             raise KeyboardInterrupt
-        except ConnectionAbortedError:
-            print("Closing {} for {}".format(roomid, repr(e)))
+        except ConnectionAbortedError as e:
+            if PRINT_LV:print("Closing {} for {}".format(roomid, repr(e)))
             break
         except Exception as e:
-            print("Reconnecting to {} because of {}".format(roomid, repr(e)))
+            if PRINT_LV:print("Reconnecting to {} because of {}".format(roomid, repr(e)))
 #            gevent.sleep(5)
             continue
         
 if __name__ == "__main__":
-    start_with_redo(33616, 1, "No-Name", time.time())
+    start_with_redo(275334, 1, "No-Name", 120, time.time())
