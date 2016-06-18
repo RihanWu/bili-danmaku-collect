@@ -150,7 +150,7 @@ def start(roomid, loop, roomname, total_count_time, start_count_time=0):
                 sock.sendall(HEARTBEAT_CONTENT)
                 heartbeat_timer = time.time()
             size_incre, msg = recv(sock, roomid)
-            gevent.sleep(1)
+            gevent.sleep(0.5)
             
             # Counting process
             if size_incre:
@@ -159,19 +159,24 @@ def start(roomid, loop, roomname, total_count_time, start_count_time=0):
                 print("count {:>6d}|size {:>10s}|from {:<{}s}|{:<30s}".format(total[0],
                                                                               humansize(total[1]),
                                                                               roomname[:10],
-                                                                              20 - str_width(roomname[:10]),
+                                                                              20 + len(roomname[:10]) - str_width(roomname[:10]),
                                                                               msg))
             if (time.time() - start_count >= total_count_time):
                 break
     except KeyboardInterrupt:
         sock.close()
         raise KeyboardInterrupt
+    except ConnectionAbortedError as e:
+        sock.close()
+        if NORMAL:
+            print("Room {}:{}".format(roomid, repr(e)))
+        raise e
     except Exception as e:
         sock.close()
         # Avoid too many eror messages
         if NORMAL:
             print("Room {}:{}".format(roomid, repr(e)))
-        raise Exception("Error: Closing socket")
+        raise e
 
     sock.close()
 
@@ -185,10 +190,13 @@ def start_with_redo(roomid, loop, roomname, total_count_time, start_count_time):
 #        start(roomid, loop, roomname, start_count_time)
         try:
             start(roomid, loop, roomname, total_count_time, start_count_time)
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as e:
             raise KeyboardInterrupt
-        except:
-            print("Reconnecting to {}".format(roomid))
+        except ConnectionAbortedError:
+            print("Closing {} for {}".format(roomid, repr(e)))
+            break
+        except Exception as e:
+            print("Reconnecting to {} because of {}".format(roomid, repr(e)))
 #            gevent.sleep(5)
             continue
         

@@ -12,7 +12,7 @@ import gevent.pool
 from bili_single import start_with_redo
 import requests
 import json
-import time
+from time import time
 from sys import argv
 
 
@@ -107,17 +107,24 @@ def job_manager(cate, total_count_time):
     global new_dict
     global current_dict
     
-    BATCH_NUM = 20
-    start_count_time = time.time()
+    BATCH_NUM = 10
+    start_count_time = time()
     working_pool = gevent.pool.Pool()
     
-    while (time.time() - start_count_time < total_count_time):
+    while (time() - start_count_time < total_count_time):
         try:
             # Contain (roomid, roomname, )
             new_dict = update_room_dict(cate)
             print("Server room count:", len(new_dict))
             
+            # Check running greenlets
+            print("Check ended greenlets")
+            for key, value in dict(current_dict).items():
+                if value[1] not in working_pool.greenlets:
+                    del current_dict[key]
+            
             # Adding new
+            print("Add new greenlets")
             new_list = list(set(new_dict.keys()) - set(current_dict.keys()))
             for i in range(int(len(new_list)/BATCH_NUM)):
                 print("Connecting to rooms")
@@ -133,6 +140,7 @@ def job_manager(cate, total_count_time):
                 gevent.sleep(BATCH_NUM * 1)
             
             # Removing old
+            print("Remove old greenlets")
             closed_list = list(set(current_dict.keys()) - set(new_dict.keys()))
             for i in closed_list:
                 working_pool.killone(current_dict[i][1])
@@ -140,10 +148,12 @@ def job_manager(cate, total_count_time):
                 print("Closed room", i)
             
             # Update roomname (experimental)
+            print("Update roomname(start new greenlets)")
             common_list = list(set(current_dict.keys() & set(new_dict.keys())))
             for i in common_list:
                 # Name change
                 if new_dict[i] != current_dict[i][0]:
+                    print("NEW:{} OLD:{}".format(new_dict[i], current_dict[i][0]))
                     working_pool.killone(current_dict[i][1])
                     new_greenlet = working_pool.spawn(start_with_redo,
                                                       i,
@@ -151,6 +161,7 @@ def job_manager(cate, total_count_time):
                                                       new_dict[i],
                                                       total_count_time,
                                                       start_count_time)
+                    current_dict[i] = (new_dict[i], new_greenlet)
                     print("Update room", i)
         except KeyboardInterrupt:
             print("KeyboardInterrupt: Kill all")
@@ -162,6 +173,7 @@ def job_manager(cate, total_count_time):
             # Check every minute
             gevent.sleep(60)
     working_pool.kill()
+    current_dict.clear()
     print("Done")
 
 
