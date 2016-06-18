@@ -13,11 +13,18 @@ from bili_single import start_with_redo
 import requests
 import json
 import time
+from sys import argv
 
 
-cate = "ent-life"
+# Dictoinary of {roomid: roomname}
+new_dict = {}
+# Dictionary of {roomid: (roomname, greenlet)}
+current_dict = {}
 
-def fetch_roomid(cate, page, room_list):
+
+def fetch_roomid(cate, page, room_dict):
+    """Get the rooms in one page"""
+    
     headers = {"Accept": "application/json, text/javascript, */*; q=0.01",
                "Accept-Encoding": "gzip, deflate, sdch",
                "Connection": "keep-alive"}
@@ -34,20 +41,23 @@ def fetch_roomid(cate, page, room_list):
             parse = json.loads(temp.decode("utf-8"))
 #            parse = json.loads(response.text)
             for item in parse["data"]:
-                room_list.append((item["roomid"], item["title"]))
+                room_dict[item["roomid"]] = item["title"]
             return
         except:
             print("Retrying", i, "fetching page", page)
             continue
     print("Too many retry fetching page", page)
 
-def update_room_list(cate):
+
+def update_room_dict(cate):
+    """Get room set in a category"""
+    
     if cate == "all":
         count_cate = "hot"
     else:
         count_cate = cate
     print("Start fetching room list")
-    room_list = []
+    room_dict = {}
     BATCH_NUM = 10
     fetch_pool = gevent.pool.Pool(BATCH_NUM)
     # Get total count and go concurrent
@@ -65,8 +75,8 @@ def update_room_list(cate):
                 print("Using normal method")
                 pages_needed = int(count/32) + 1
                 fetch_pool.map(lambda a:fetch_roomid(*a),
-                               [(cate, j+1, room_list) for j in range(pages_needed)])
-                return list(set(room_list))
+                               [(cate, j+1, room_dict) for j in range(pages_needed)])
+                return room_dict
             except:
                 print("Retrying fetch room count")
                 continue
@@ -78,40 +88,82 @@ def update_room_list(cate):
                 print("Fallback to loop method")
                 trial = 0
                 while True:
-                    len_before = len(room_list)
+                    len_before = len(room_dict)
                     for i in range(trial*BATCH_NUM, (trial+1)*BATCH_NUM):
                         print("Trying ten pages")
-                        fetch_pool.spawn(fetch_roomid, cate, i + 1, room_list)
+                        fetch_pool.spawn(fetch_roomid, cate, i + 1, room_dict)
                     fetch_pool.join()
-                    if len(room_list)-len_before < 320:
+                    if len(room_dict)-len_before < 320:
                         break
                     trial += 1
-                return list(set(room_list))
+                return room_dict
             except:
                 print("Retrying fetch room count")
                 continue
         raise Exception("Can't get room data")
 
 
-try:
-    test_list = update_room_list(cate)
-    print("room count:{}".format(len(test_list)))
-
-    pool = gevent.pool.Pool()
-    start_count_time = time.time()
-
+def job_manager(cate, total_count_time):
+    global new_dict
+    global current_dict
+    
     BATCH_NUM = 20
+    start_count_time = time.time()
+    working_pool = gevent.pool.Pool()
+    
+    while (time.time() - start_count_time < total_count_time):
+        try:
+            # Contain (roomid, roomname, )
+            new_dict = update_room_dict(cate)
+            print("Server room count:", len(new_dict))
+            
+            # Adding new
+            new_list = list(set(new_dict.keys()) - set(current_dict.keys()))
+            for i in range(int(len(new_list)/BATCH_NUM)):
+                print("Connecting to rooms")
+                for j in new_list[BATCH_NUM*i: BATCH_NUM*(i+1)]:
+                    new_greenlet = working_pool.spawn(start_with_redo,
+                                                      j,
+                                                      1,
+                                                      new_dict[j],
+                                                      total_count_time,
+                                                      start_count_time)
+                    current_dict[j] = (new_dict[j], new_greenlet)
+                    print("Spawning ", j)
+                gevent.sleep(BATCH_NUM * 1)
+            
+            # Removing old
+            closed_list = list(set(current_dict.keys()) - set(new_dict.keys()))
+            for i in closed_list:
+                working_pool.killone(current_dict[i][1])
+                del current_dict[i]
+                print("Closed room", i)
+            
+            # Update roomname (experimental)
+            common_list = list(set(current_dict.keys() & set(new_dict.keys())))
+            for i in common_list:
+                # Name change
+                if new_dict[i] != current_dict[i][0]:
+                    working_pool.killone(current_dict[i][1])
+                    new_greenlet = working_pool.spawn(start_with_redo,
+                                                      i,
+                                                      1,
+                                                      new_dict[i],
+                                                      total_count_time,
+                                                      start_count_time)
+                    print("Update room", i)
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt: Kill all")
+            break
+        except Exception as e:
+            print(repr(e))
+            continue
+        finally:
+            # Check every minute
+            gevent.sleep(60)
+    working_pool.kill()
+    print("Done")
 
-    for i in range(int(len(test_list)/BATCH_NUM)):
-        print("Connecting to rooms")
-        for j in test_list[BATCH_NUM*i: BATCH_NUM*(i+1)]:
-            pool.spawn(start_with_redo, j[0], 1, j[1], start_count_time)
-            print("Spawning ", j[0])
-        gevent.sleep(BATCH_NUM * 1)
-    print("All started")
-    pool.join()
-    pool.kill()
-    print("Finally")
-except KeyboardInterrupt:
-    pool.kill()
-    print("Kill all")
+
+if __name__ == "__main__":
+    job_manager(argv[1], int(argv[2]))

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-#from gevent import monkey
-#monkey.patch_all()
+from gevent import monkey
+monkey.patch_all()
 import socket
 import json
 from random import random
@@ -63,7 +63,6 @@ total           :   (number of commands, total size of commands)
 """
 NORMAL = False
 COUNTING_TOTAL = True
-TOTAL_COUNT_TIME = 15
 HEARTBEAT_CONTENT = b'00000010001000010000000200000001'
 total = (0, 0)
 send_data_template = [b'',
@@ -124,7 +123,7 @@ def recv(sock, roomid):
     return (0, "")
 
 
-def start(roomid, loop, roomname, start_count_time=0):
+def start(roomid, loop, roomname, total_count_time, start_count_time=0):
     global total
     
     userid = int(random()*2e14 + 1e14)
@@ -162,27 +161,34 @@ def start(roomid, loop, roomname, start_count_time=0):
                                                                               roomname[:10],
                                                                               20 - str_width(roomname[:10]),
                                                                               msg))
-            if (time.time() - start_count >= TOTAL_COUNT_TIME):
+            if (time.time() - start_count >= total_count_time):
                 break
+    except KeyboardInterrupt:
+        sock.close()
+        raise KeyboardInterrupt
     except Exception as e:
         sock.close()
-        print(roomid, repr(e))
+        # Avoid too many eror messages
+        if NORMAL:
+            print("Room {}:{}".format(roomid, repr(e)))
         raise Exception("Error: Closing socket")
 
     sock.close()
 
-    # Only normal stop reaches here, so it doesn't need to check NORMAL or 
-    # COUNTING_TOTAL
-    print("End")
+    # Avoid too many messages
+    if NORMAL:
+        print("End")
 
 
-def start_with_redo(roomid, loop, roomname, start_count_time):
-    while time.time() - start_count_time < TOTAL_COUNT_TIME:
+def start_with_redo(roomid, loop, roomname, total_count_time, start_count_time):
+    while time.time() - start_count_time < total_count_time:
 #        start(roomid, loop, roomname, start_count_time)
         try:
-            start(roomid, loop, roomname, start_count_time)
+            start(roomid, loop, roomname, total_count_time, start_count_time)
+        except KeyboardInterrupt:
+            raise KeyboardInterrupt
         except:
-            print("Reconnecting to ", roomid)
+            print("Reconnecting to {}".format(roomid))
 #            gevent.sleep(5)
             continue
         
