@@ -4,6 +4,7 @@
 #monkey.patch_all()
 import socket
 import json
+from random import random
 from binascii import hexlify as hh
 import time
 from pprint import pprint
@@ -61,19 +62,22 @@ total           :   (number of commands, total size of commands)
 """
 NORMAL = False
 COUNTING_TOTAL = True
-TOTAL_COUNT_TIME = 100
+TOTAL_COUNT_TIME = 15
 HEARTBEAT_CONTENT = b'00000010001000010000000200000001'
 total = (0, 0)
+send_data_template = [b'',
+                      b'001000010000000700000001',
+                      b'']
 
 
-def pack_data(roomid):
+def pack_data(body):
     """Pack the initial connecting data
     
     roomid(int)
     """
-    return b''.join([b'\x00\x00\x005001000010000000700000001{"uid":200000000000000,"roomid":',
-                    str(roomid).encode("utf-8"),
-                    b'}'])
+    send_data_template[0] = (len(body)+16).to_bytes(4, byteorder="big")
+    send_data_template[2] = body
+    return b''.join(send_data_template)
 
 
 def recv(sock, roomid):
@@ -81,7 +85,9 @@ def recv(sock, roomid):
 
     # Package length
     re_data = sock.recv(16)
+    print(re_data)
     if not re_data:
+        print("No incoming data")
         return (0, "")
     length = int(hh(re_data[:4]), 16)
     if NORMAL:
@@ -118,11 +124,15 @@ def recv(sock, roomid):
 
 def start(roomid, loop, roomname, start_count_time=0):
     global total
+    
+    userid = int(random()*2e14 + 1e14)
+    dum = json.dumps({"roomid":roomid, "uid":userid}, separators=(',',':'))
+    j = dum.encode('utf-8')
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(("livecmt-2.bilibili.com", 788))
 
-    sock.sendall(pack_data(roomid))
+    sock.sendall(pack_data(j))
     recv(sock, roomid)
     print("Connected to room", roomid)
 
@@ -136,7 +146,8 @@ def start(roomid, loop, roomname, start_count_time=0):
     try:
         while loop:
             # Heartbeat
-            if time.time() - heartbeat_timer > 30:
+            if time.time() - heartbeat_timer > 10:
+                print("Sending heartbeat")
                 sock.sendall(HEARTBEAT_CONTENT)
                 heartbeat_timer = time.time()
             print("Looping")
@@ -155,8 +166,9 @@ def start(roomid, loop, roomname, start_count_time=0):
                                                                               msg))
             if (time.time() - start_count >= TOTAL_COUNT_TIME):
                 break
-    except:
+    except Exception as e:
         sock.close()
+        print(repr(e))
         raise Exception("Error: Closing socket")
 
     sock.close()
@@ -168,13 +180,13 @@ def start(roomid, loop, roomname, start_count_time=0):
 
 def start_with_redo(roomid, loop, roomname, start_count_time):
     while time.time() - start_count_time < TOTAL_COUNT_TIME:
-#        start(roomid, loop, roomname, start_count_time)
-        try:
-            start(roomid, loop, roomname, start_count_time)
-        except:
-            print("Reconnecting to ", roomid)
-#            gevent.sleep(5)
-            continue
+        start(roomid, loop, roomname, start_count_time)
+#        try:
+#            start(roomid, loop, roomname, start_count_time)
+#        except:
+#            print("Reconnecting to ", roomid)
+##            gevent.sleep(5)
+#            continue
         
 if __name__ == "__main__":
-    start_with_redo(47202, 1, "No-Name", time.time())
+    start_with_redo(33616, 1, "No-Name", time.time())
