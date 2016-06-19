@@ -125,82 +125,52 @@ def recv(sock, roomid):
     return (0, "")
 
 
-def start(roomid, loop, roomname, total_count_time, start_count_time=0):
+def start(roomid, roomname, end_time):
     global total
     
     userid = int(random()*2e14 + 1e14)
     dum = json.dumps({"roomid":roomid, "uid":userid}, separators=(',',':'))
-    j = dum.encode('utf-8')
+    init_data = pack_data(dum.encode('utf-8'))
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(("livecmt-2.bilibili.com", 788))
-
-    sock.sendall(pack_data(j))
-    if PRINT_LV:print("Connected to room", roomid)
-
-    # Global counting start time
-    if start_count_time:
-        start_count = start_count_time
-    else:
-        start_count = time.time()
-
-    heartbeat_timer = time.time()
-    try:
-        while loop:
-            # Heartbeat
-            if time.time() - heartbeat_timer > 10:
-                sock.sendall(HEARTBEAT_CONTENT)
-                heartbeat_timer = time.time()
-            size_incre, msg = recv(sock, roomid)
-            gevent.sleep(1)
-            
-            # Counting process
-            if size_incre:
-                total = (total[0] + 1,
-                         total[1] + size_incre)
-                print("count {:>6d}|size {:>10s}|from {:<{}s}|{:<30s}".format(total[0],
-                                                                              humansize(total[1]),
-                                                                              roomname[:10],
-                                                                              20 + len(roomname[:10]) - str_width(roomname[:10]),
-                                                                              msg))
-            if (time.time() - start_count >= total_count_time):
+    while (time.time() < end_time):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(("livecmt-2.bilibili.com", 788))
+            sock.sendall(init_data)
+            if PRINT_LV:
+                print("Connected to room", roomid)
+        except socket.error:
+            sock.close()
+            continue
+        heartbeat_timer = time.time()
+        while True:
+            try:
+                if time.time() - heartbeat_timer > 10:
+                    sock.sendall(HEARTBEAT_CONTENT)
+                    heartbeat_timer = time.time()
+                size_incre, msg = recv(sock, roomid)
+                if size_incre:
+                    total = (total[0] + 1,
+                             total[1] + size_incre)
+                    print("count {:>6d}|size {:>10s}|from {:<{}s}|{:<30s}".format(total[0],
+                                                                                  humansize(total[1]),
+                                                                                  roomname[:10],
+                                                                                  20 + len(roomname[:10]) - str_width(roomname[:10]),
+                                            msg))
+                if (time.time() > end_time):
+                    break
+            except socket.error:
+                sock.close()
                 break
-    except KeyboardInterrupt:
+            except KeyboardInterrupt:
+                sock.close()
+                raise KeyboardInterrupt
+            gevent.sleep(1)
         sock.close()
-        raise KeyboardInterrupt
-    except ConnectionAbortedError as e:
-        sock.close()
-        if NORMAL:
-            print("Room {}:{}".format(roomid, repr(e)))
-        raise e
-    except Exception as e:
-        sock.close()
-        # Avoid too many eror messages
-        if NORMAL:
-            print("Room {}:{}".format(roomid, repr(e)))
-        raise e
-
-    sock.close()
 
     # Avoid too many messages
     if NORMAL:
         print("End")
 
-
-def start_with_redo(roomid, loop, roomname, total_count_time, start_count_time):
-    while time.time() - start_count_time < total_count_time:
-#        start(roomid, loop, roomname, start_count_time)
-        try:
-            start(roomid, loop, roomname, total_count_time, start_count_time)
-        except KeyboardInterrupt as e:
-            raise KeyboardInterrupt
-        except ConnectionAbortedError as e:
-            if PRINT_LV:print("Closing {} for {}".format(roomid, repr(e)))
-            break
-        except Exception as e:
-            if PRINT_LV:print("Reconnecting to {} because of {}".format(roomid, repr(e)))
-#            gevent.sleep(5)
-            continue
-        
 if __name__ == "__main__":
-    start_with_redo(275334, 1, "No-Name", 120, time.time())
+    start(97835, "No-Name",time.time() + 120)

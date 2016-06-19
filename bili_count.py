@@ -9,7 +9,7 @@ from gevent import monkey
 monkey.patch_all()
 import gevent
 import gevent.pool
-from bili_single import start_with_redo
+from bili_single import start
 import requests
 import json
 from time import time
@@ -119,7 +119,7 @@ def check_ended():
             del current_dict[key]
 
 
-def add_new(BATCH_NUM, total_count_time, start_count_time):
+def add_new(BATCH_NUM, end_time):
     global new_dict
     global current_dict
     global working_pool
@@ -129,12 +129,10 @@ def add_new(BATCH_NUM, total_count_time, start_count_time):
     for i in range(int(len(new_list)/BATCH_NUM)):
         if PRINT_LV:print("Connecting to rooms")
         for j in new_list[BATCH_NUM*i: BATCH_NUM*(i+1)]:
-            new_greenlet = working_pool.spawn(start_with_redo,
+            new_greenlet = working_pool.spawn(start,
                                               j,
-                                              1,
                                               new_dict[j],
-                                              total_count_time,
-                                              start_count_time)
+                                              end_time)
             current_dict[j] = (new_dict[j], new_greenlet)
             if PRINT_LV:print("Spawning ", j)
         gevent.sleep(BATCH_NUM * 1)
@@ -153,7 +151,7 @@ def remove_old():
         print("Closed room", i)
 
 
-def update_roomname(total_count_time, start_count_time):
+def update_roomname(end_time):
     global new_dict
     global current_dict
     global working_pool
@@ -163,16 +161,15 @@ def update_roomname(total_count_time, start_count_time):
     for i in common_list:
         # Name change
         if new_dict[i] != current_dict[i][0]:
-            print("NEW:{} OLD:{}".format(new_dict[i], current_dict[i][0]))
+            print("Update room {} NEW:{} OLD:{}".format(i,
+                                                        new_dict[i],
+                                                        current_dict[i][0]))
             working_pool.killone(current_dict[i][1])
-            new_greenlet = working_pool.spawn(start_with_redo,
+            new_greenlet = working_pool.spawn(start,
                                               i,
-                                              1,
                                               new_dict[i],
-                                              total_count_time,
-                                              start_count_time)
+                                              end_time)
             current_dict[i] = (new_dict[i], new_greenlet)
-            print("Update room", i)
             gevent.sleep(0)
 
 
@@ -182,10 +179,10 @@ def job_manager(cate, total_count_time):
     global working_pool
     
     BATCH_NUM = 20
-    start_count_time = time()
+    end_time = time() + total_count_time
     
     try:
-        while (time() - start_count_time < total_count_time):
+        while (time() < end_time):
             try:
                 # Contain (roomid, roomname, )
                 new_dict = update_room_dict(cate)
@@ -194,12 +191,10 @@ def job_manager(cate, total_count_time):
                 gevent.joinall([gevent.spawn(check_ended),
                                 gevent.spawn(add_new,
                                              BATCH_NUM,
-                                             total_count_time,
-                                             start_count_time),
+                                             end_time),
                                 gevent.spawn(remove_old),
                                 gevent.spawn(update_roomname,
-                                             total_count_time,
-                                             start_count_time)])
+                                             end_time)])
                 print("End one loop")
             except KeyboardInterrupt:
                 print("KeyboardInterrupt: Kill all")
