@@ -20,7 +20,7 @@ PRINT_LV = 0
 
 # Dictoinary of {roomid: roomname}
 new_dict = {}
-# Dictionary of {roomid: (roomname, greenlet)}
+# Dictionary of {roomid: (roomname_async, greenlet)}
 current_dict = {}
 working_pool = gevent.pool.Pool()
 
@@ -140,13 +140,15 @@ def add_new(BATCH_NUM, end_time):
 #        gevent.sleep(BATCH_NUM * 1)
     for index, roomid in enumerate(new_list):
         if PRINT_LV:print("Connecting to rooms")
+        roomname_async = gevent.event.AsyncResult()
+        roomname_async.set(new_dict[roomid])
         new_greenlet = gevent.spawn_later(index * 0.01,
                                           start,
                                           roomid,
-                                          new_dict[roomid],
+                                          roomname_async,
                                           end_time)
         working_pool.add(new_greenlet)
-        current_dict[roomid] = (new_dict[roomid], new_greenlet)
+        current_dict[roomid] = (roomname_async, new_greenlet)
         if PRINT_LV:print("Spawning ", roomid)
 
 
@@ -187,18 +189,11 @@ def update_roomname(end_time):
 #    print("Update {} roomname(start new greenlets)".format(count))
     for i in common_list:
         # Name change
-        if new_dict[i] != current_dict[i][0]:
+        if new_dict[i] != current_dict[i][0].get():
             print("Update room {} NEW:{} OLD:{}".format(i,
                                                         new_dict[i],
-                                                        current_dict[i][0]))
-            new_greenlet = gevent.spawn_later(count * 0.01,
-                                              start,
-                                              i,
-                                              new_dict[i],
-                                              end_time)
-            working_pool.killone(current_dict[i][1])
-            working_pool.add(new_greenlet)
-            current_dict[i] = (new_dict[i], new_greenlet)
+                                                        current_dict[i][0].get()))
+            current_dict[i][0].set(new_dict[i])
             count += 1
     print("Update {} roomname(start new greenlets)".format(count))
 

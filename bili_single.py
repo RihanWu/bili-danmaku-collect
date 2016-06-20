@@ -125,7 +125,7 @@ def recv(sock, roomid):
     return (0, "")
 
 
-def start(roomid, roomname, end_time):
+def start(roomid, roomname_async, end_time):
     global total
     
     userid = int(random()*2e14 + 1e14)
@@ -148,10 +148,11 @@ def start(roomid, roomname, end_time):
                 if size_incre:
                     total = (total[0] + 1,
                              total[1] + size_incre)
+                    current_roomname = roomname_async.get()
                     print("count {:>6d}|size {:>10s}|from {:<{}s}|{:<30s}".format(total[0],
                                                                                   humansize(total[1]),
-                                                                                  roomname[:10],
-                                                                                  20 + len(roomname[:10]) - str_width(roomname[:10]),
+                                                                                  current_roomname[:10],
+                                                                                  20 + len(current_roomname[:10]) - str_width(current_roomname[:10]),
                                                                                   msg))
                 if (time.time() > end_time):
                     sock.close()
@@ -166,6 +167,7 @@ def start(roomid, roomname, end_time):
             sock.close()
             raise KeyboardInterrupt
         except gevent.GreenletExit:
+            print("Got terminate signal")
             sock.close()
             break
         except Exception as e:
