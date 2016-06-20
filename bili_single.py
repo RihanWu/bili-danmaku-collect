@@ -9,6 +9,8 @@ from binascii import hexlify as hh
 import time
 from pprint import pprint
 import gevent
+import gevent.event
+from sys import argv
 
 #import urllib
 #from bs4 import BeautifulSoup
@@ -64,7 +66,7 @@ total           :   (number of commands, total size of commands)
 # 1 to also print connect and reconnect
 PRINT_LV = 0
 NORMAL = False
-COUNTING_TOTAL = False
+COUNTING_TOTAL = True
 HEARTBEAT_CONTENT = b'00000010001000010000000200000001'
 total = (0, 0)
 send_data_template = [b'',
@@ -92,8 +94,10 @@ def recv(sock, roomid):
     re_data = sock.recv(16)
     if re_data:
         length = int(hh(re_data[:4]), 16)
-    else:
-        return (0, "")
+    elif re_data == b'':
+        raise Exception("Received empty string")
+#    else:
+#        return (0, "")
     if NORMAL:
         print("length", length)
 
@@ -125,7 +129,7 @@ def recv(sock, roomid):
     return (0, "")
 
 
-def start(roomid, roomname_async, end_time):
+def start(roomid, roomname_async, end_time, current_rooms_async):
     global total
     
     userid = int(random()*2e14 + 1e14)
@@ -135,6 +139,11 @@ def start(roomid, roomname_async, end_time):
     while (time.time() < end_time):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, 60)
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, 4)
+            sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, 15)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.connect(("livecmt-2.bilibili.com", 788))
             sock.sendall(init_data)
             if PRINT_LV:
@@ -155,23 +164,34 @@ def start(roomid, roomname_async, end_time):
                                                                                   20 + len(current_roomname[:10]) - str_width(current_roomname[:10]),
                                                                                   msg))
                 if (time.time() > end_time):
+#                    sock.shutdown(socket.SHUT_RDWR)
                     sock.close()
                     break
-                gevent.sleep(0.01)
+                if roomid not in current_rooms_async.get():
+                    if PRINT_LV:print("Not in current_rooms_async")
+                    raise gevent.GreenletExit
+                gevent.sleep(0)
         except OSError as e:
-            print("Socket error {} {}".format(sock.getsockname(), repr(e)))
+            if PRINT_LV:
+                print("Socket error {} {}".format(sock.getsockname(), repr(e)))
+#            sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             continue
         # Force redo
         except KeyboardInterrupt:
+#            sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             raise KeyboardInterrupt
         except gevent.GreenletExit:
-            print("Got terminate signal")
+            if PRINT_LV:
+                print("Got terminate signal")
+#            sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             break
         except Exception as e:
-            print(repr(e))
+            if PRINT_LV:
+                print(repr(e))
+#            sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             continue
 
@@ -180,4 +200,7 @@ def start(roomid, roomname_async, end_time):
         print("End")
 
 if __name__ == "__main__":
-    start(97835, "No-Name",time.time() + 120)
+    room = int(argv[1])
+    current_rooms_async = gevent.event.AsyncResult()
+    current_rooms_async.set([room])
+    start(current_rooms_async.get()[0], "No Name",time.time() + 120, current_rooms_async)
