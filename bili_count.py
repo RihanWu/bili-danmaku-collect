@@ -113,10 +113,12 @@ def check_ended():
     global current_dict
     global working_pool
     
-    print("Check ended greenlets")
+    count = 0
     for key, value in dict(current_dict).items():
         if value[1] not in working_pool.greenlets:
             del current_dict[key]
+            count += 1
+    print("Remove {} ended greenlets".format(count))
 
 
 def add_new(BATCH_NUM, end_time):
@@ -124,18 +126,28 @@ def add_new(BATCH_NUM, end_time):
     global current_dict
     global working_pool
     
-    print("Add new greenlets")
     new_list = list(set(new_dict.keys()) - set(current_dict.keys()))
-    for i in range(int(len(new_list)/BATCH_NUM)):
+    print("Add {} new greenlets".format(len(new_list)))
+#    for i in range(int(len(new_list)/BATCH_NUM)):
+#        if PRINT_LV:print("Connecting to rooms")
+#        for j in new_list[BATCH_NUM*i: BATCH_NUM*(i+1)]:
+#            new_greenlet = working_pool.spawn(start,
+#                                              j,
+#                                              new_dict[j],
+#                                              end_time)
+#            current_dict[j] = (new_dict[j], new_greenlet)
+#            if PRINT_LV:print("Spawning ", j)
+#        gevent.sleep(BATCH_NUM * 1)
+    for index, roomid in enumerate(new_list):
         if PRINT_LV:print("Connecting to rooms")
-        for j in new_list[BATCH_NUM*i: BATCH_NUM*(i+1)]:
-            new_greenlet = working_pool.spawn(start,
-                                              j,
-                                              new_dict[j],
-                                              end_time)
-            current_dict[j] = (new_dict[j], new_greenlet)
-            if PRINT_LV:print("Spawning ", j)
-        gevent.sleep(BATCH_NUM * 1)
+        new_greenlet = gevent.spawn_later(index * 0.01,
+                                          start,
+                                          roomid,
+                                          new_dict[roomid],
+                                          end_time)
+        working_pool.add(new_greenlet)
+        current_dict[roomid] = (new_dict[roomid], new_greenlet)
+        if PRINT_LV:print("Spawning ", roomid)
 
 
 def remove_old():
@@ -143,34 +155,52 @@ def remove_old():
     global current_dict
     global working_pool
     
-    print("Remove old greenlets")
     closed_list = list(set(current_dict.keys()) - set(new_dict.keys()))
+    print("Remove {} old greenlets".format(len(closed_list)))
     for i in closed_list:
         working_pool.killone(current_dict[i][1])
         del current_dict[i]
-        print("Closed room", i)
+#        print("Closed room", i)
 
 
 def update_roomname(end_time):
     global new_dict
     global current_dict
     global working_pool
-    
-    print("Update roomname(start new greenlets)")
+
+    count = 0
     common_list = list(set(current_dict.keys() & set(new_dict.keys())))
+#    for i in common_list:
+#        # Name change
+#        if new_dict[i] != current_dict[i][0]:
+#            print("Update room {} NEW:{} OLD:{}".format(i,
+#                                                        new_dict[i],
+#                                                        current_dict[i][0]))
+#            working_pool.killone(current_dict[i][1])
+#            new_greenlet = working_pool.spawn(start,
+#                                              i,
+#                                              new_dict[i],
+#                                              end_time)
+#            current_dict[i] = (new_dict[i], new_greenlet)
+#            gevent.sleep(0)
+#            count += 1
+#    print("Update {} roomname(start new greenlets)".format(count))
     for i in common_list:
         # Name change
         if new_dict[i] != current_dict[i][0]:
             print("Update room {} NEW:{} OLD:{}".format(i,
                                                         new_dict[i],
                                                         current_dict[i][0]))
-            working_pool.killone(current_dict[i][1])
-            new_greenlet = working_pool.spawn(start,
+            new_greenlet = gevent.spawn_later(count * 0.01,
+                                              start,
                                               i,
                                               new_dict[i],
                                               end_time)
+            working_pool.killone(current_dict[i][1])
+            working_pool.add(new_greenlet)
             current_dict[i] = (new_dict[i], new_greenlet)
-            gevent.sleep(0)
+            count += 1
+    print("Update {} roomname(start new greenlets)".format(count))
 
 
 def job_manager(cate, total_count_time):
@@ -204,7 +234,10 @@ def job_manager(cate, total_count_time):
                 continue
             finally:
                 # Check every minute
-                gevent.sleep(60)
+                print("Current pool size {}".format(len(working_pool.greenlets)))
+#                for i in working_pool.greenlets:
+#                    print(i.exception)
+                gevent.sleep(10)
     finally:
         working_pool.kill()
         current_dict.clear()

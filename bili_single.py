@@ -64,7 +64,7 @@ total           :   (number of commands, total size of commands)
 # 1 to also print connect and reconnect
 PRINT_LV = 0
 NORMAL = False
-COUNTING_TOTAL = True
+COUNTING_TOTAL = False
 HEARTBEAT_CONTENT = b'00000010001000010000000200000001'
 total = (0, 0)
 send_data_template = [b'',
@@ -108,7 +108,7 @@ def recv(sock, roomid):
             command = json.loads(re_data.decode('utf-8'))
             if NORMAL:
                 pprint(command)
-            else:
+            elif COUNTING_TOTAL:
                 if command["cmd"] == "DANMU_MSG":
                     msg = command["info"][1]
                 elif command["cmd"] == "SEND_GIFT":
@@ -139,12 +139,8 @@ def start(roomid, roomname, end_time):
             sock.sendall(init_data)
             if PRINT_LV:
                 print("Connected to room", roomid)
-        except socket.error:
-            sock.close()
-            continue
-        heartbeat_timer = time.time()
-        while True:
-            try:
+            heartbeat_timer = time.time()
+            while True:
                 if time.time() - heartbeat_timer > 10:
                     sock.sendall(HEARTBEAT_CONTENT)
                     heartbeat_timer = time.time()
@@ -156,17 +152,26 @@ def start(roomid, roomname, end_time):
                                                                                   humansize(total[1]),
                                                                                   roomname[:10],
                                                                                   20 + len(roomname[:10]) - str_width(roomname[:10]),
-                                            msg))
+                                                                                  msg))
                 if (time.time() > end_time):
+                    sock.close()
                     break
-            except socket.error:
-                sock.close()
-                break
-            except KeyboardInterrupt:
-                sock.close()
-                raise KeyboardInterrupt
-            gevent.sleep(1)
-        sock.close()
+                gevent.sleep(0.01)
+        except OSError as e:
+            print("Socket error {} {}".format(sock.getsockname(), repr(e)))
+            sock.close()
+            continue
+        # Force redo
+        except KeyboardInterrupt:
+            sock.close()
+            raise KeyboardInterrupt
+        except gevent.GreenletExit:
+            sock.close()
+            break
+        except Exception as e:
+            print(repr(e))
+            sock.close()
+            continue
 
     # Avoid too many messages
     if NORMAL:
