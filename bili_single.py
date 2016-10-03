@@ -12,12 +12,6 @@ import gevent
 import gevent.event
 from sys import argv
 
-#import urllib
-#from bs4 import BeautifulSoup
-#
-#channel_id = 47202
-#response = urllib.request.urlopen("http://live.bilibili.com/api/player?id=cid:" + str(channel_id))
-#tree = BeautifulSoup('<root>'+response.read().decode('utf-8')+'</root>', 'lxml')
 
 suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 def humansize(nbytes):
@@ -79,7 +73,7 @@ send_data_template = [b'',
 
 def pack_data(body):
     """Pack the initial connecting data
-    
+
     roomid(int)
     """
     send_data_template[0] = (len(body)+16).to_bytes(4, byteorder="big")
@@ -96,8 +90,6 @@ def recv(sock, roomid):
         length = int(hh(re_data[:4]), 16)
     elif re_data == b'':
         raise Exception("Received empty string")
-#    else:
-#        return (0, "")
     if NORMAL:
         print("length", length)
 
@@ -131,7 +123,7 @@ def recv(sock, roomid):
 
 def start(roomid, roomname_async, end_time, current_rooms_async):
     global total
-    
+
     userid = int(random()*2e14 + 1e14)
     dum = json.dumps({"roomid":roomid, "uid":userid}, separators=(',',':'))
     init_data = pack_data(dum.encode('utf-8'))
@@ -164,7 +156,6 @@ def start(roomid, roomname_async, end_time, current_rooms_async):
                                                                                   20 + len(current_roomname[:10]) - str_width(current_roomname[:10]),
                                                                                   msg))
                 if (time.time() > end_time):
-#                    sock.shutdown(socket.SHUT_RDWR)
                     sock.close()
                     break
                 if roomid not in current_rooms_async.get():
@@ -174,24 +165,20 @@ def start(roomid, roomname_async, end_time, current_rooms_async):
         except OSError as e:
             if PRINT_LV:
                 print("Socket error {} {}".format(sock.getsockname(), repr(e)))
-#            sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             continue
         # Force redo
         except KeyboardInterrupt:
-#            sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             raise KeyboardInterrupt
         except gevent.GreenletExit:
             if PRINT_LV:
                 print("Got terminate signal")
-#            sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             break
         except Exception as e:
             if PRINT_LV:
                 print(repr(e))
-#            sock.shutdown(socket.SHUT_RDWR)
             sock.close()
             continue
 
@@ -199,6 +186,7 @@ def start(roomid, roomname_async, end_time, current_rooms_async):
     if NORMAL:
         print("End")
 
+# Just some simple test
 if __name__ == "__main__":
     room = int(argv[1])
     current_rooms_async = gevent.event.AsyncResult()

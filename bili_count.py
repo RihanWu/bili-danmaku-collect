@@ -39,7 +39,7 @@ working_pool = gevent.pool.Pool()
 
 def fetch_roomid(cate, page, new_dict_async):
     """Get the rooms in one page"""
-    
+
     headers = {"Accept": "application/json, text/javascript, */*; q=0.01",
                "Accept-Encoding": "gzip, deflate, sdch",
                "Connection": "keep-alive"}
@@ -48,12 +48,7 @@ def fetch_roomid(cate, page, new_dict_async):
     if PRINT_LV:print("Fetching page", page)
     response = requests.get("http://live.bilibili.com/area/liveList?area="+ cate +"&order=online&page=" + str(page),
                             headers=headers,
-#                                    stream=True,
                             timeout = 2)
-#            temp = b""
-#            for chunk in response.iter_content(128):
-#                temp = b"".join([temp, chunk])
-#            parse = json.loads(temp.decode("utf-8"))
     parse = json.loads(response.text)
     for item in parse["data"]:
         local_dict[int(item["roomid"])] = item["title"]
@@ -63,7 +58,7 @@ def fetch_roomid(cate, page, new_dict_async):
 
 def update_room_dict(cate, new_dict_async):
     """Get room set in a category"""
-    
+
     if cate == "all":
         count_cate = "hot"
     else:
@@ -100,7 +95,7 @@ def update_room_dict(cate, new_dict_async):
 def check_ended():
     global current_dict
     global working_pool
-    
+
     count = 0
     for key, value in dict(current_dict).items():
         if value[1] not in working_pool.greenlets:
@@ -114,7 +109,7 @@ def add_new(BATCH_NUM, end_time):
     global current_dict
     global working_pool
     global current_rooms_async
-    
+
     new_list = list(set(new_dict_async.get().keys()) - set(current_dict.keys()))
     stat = (len(current_dict), len(new_dict_async.get()), len(new_list))
     current_rooms_async.set(list(new_dict_async.get().keys()))
@@ -157,11 +152,11 @@ def job_manager(cate, total_count_time):
     global new_dict_async
     global current_dict
     global working_pool
-    
+
     BATCH_NUM = 20
     end_time = time() + total_count_time
     print_template = "{} ended | {} updated |{} in current_dict | {} in new_dict | {} newly start"
-    
+
     try:
         while (time() < end_time):
             # Contain (roomid, roomname, )
@@ -174,7 +169,7 @@ def job_manager(cate, total_count_time):
                                             *stat))
                 new_dict_ready.set(False)
                 gevent.sleep(30)
-            
+
             if not new_dict_fetching.get():
                 gevent.spawn(update_room_dict, cate, new_dict_async)
 
